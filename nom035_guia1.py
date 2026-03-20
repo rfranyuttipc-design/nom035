@@ -1758,27 +1758,44 @@ def guardar(data):
     return False
 
 def folio_nuevo(cliente_key: str, razon_social: str) -> str:
-    """Folio consecutivo por razón social dentro del archivo del cliente.
-    En entornos cloud donde el archivo puede no persistir,
-    usa timestamp para garantizar unicidad."""
-    path = excel_path(cliente_key, razon_social)
+    """Folio consecutivo 001, 002, 003...
+    Usa archivo de bloqueo para evitar que dos usuarios simultáneos
+    obtengan el mismo número.
+    """
+    path      = excel_path(cliente_key, razon_social)
+    lock_path = path + ".lock"
     init_excel(path)
+
+    # Intentar obtener el bloqueo (esperar hasta 10 segundos)
+    _intentos = 0
+    while os.path.exists(lock_path) and _intentos < 20:
+        time.sleep(0.5)
+        _intentos += 1
+
+    # Crear bloqueo
+    try:
+        with open(lock_path, "w") as _lf:
+            _lf.write("lock")
+    except Exception:
+        pass
+
     try:
         df = pd.read_excel(path)
         if df.empty or "Razón Social" not in df.columns:
             n = 1
         else:
-            n = len(df[df["Razón Social"] == razon_social]) + 1
-        # Si el archivo existe y tiene datos, usar folio consecutivo normal
-        if n > 1 or (not df.empty):
-            return str(n).zfill(3)
-        # Si el archivo está vacío o es nuevo, usar timestamp para evitar
-        # colisiones en entornos cloud donde el archivo se puede reiniciar
-        from datetime import datetime as _dt
-        return _dt.now().strftime("%H%M%S")
+            filtro = df["Razón Social"].astype(str).str.strip().str.upper() == razon_social.strip().upper()
+            n = int(filtro.sum()) + 1
+        return str(n).zfill(3)
     except Exception:
-        from datetime import datetime as _dt
-        return _dt.now().strftime("%H%M%S")
+        return "001"
+    finally:
+        # Liberar bloqueo siempre
+        try:
+            if os.path.exists(lock_path):
+                os.remove(lock_path)
+        except Exception:
+            pass
 
 def solo_letras(t):
     return re.sub(r"[^A-Za-záéíóúÁÉÍÓÚüÜñÑ\s;]","",t).upper().strip()
@@ -1999,19 +2016,20 @@ def header(folio=False):
     ) if folio else ""
 
     rf_tag  = (f'<img src="{rf_src}"  alt="RFRANYUTTI" ' +
-               'style="height:64px;width:auto;object-fit:contain;">') if rf_src else "<b>RFRANYUTTI</b>"
+               'style="height:52px;max-width:120px;width:auto;object-fit:contain;">') if rf_src else "<b>RFRANYUTTI</b>"
     cli_tag = (f'<img src="{cli_src}" alt="{S.cliente_key}" ' +
-               'style="height:64px;width:auto;object-fit:contain;">') if cli_src else f"<b>{S.cliente_key}</b>"
+               'style="height:52px;max-width:120px;width:auto;object-fit:contain;">') if cli_src else f"<b>{S.cliente_key}</b>"
 
     st.markdown(f"""
-    <div style="display:flex;align-items:center;justify-content:space-between;
+    <div style="display:flex;flex-wrap:wrap;align-items:center;
+                justify-content:space-between;gap:.5rem;
                 padding:.5rem 0 .6rem 0;margin-bottom:.2rem;">
-        <div style="display:flex;align-items:center;gap:1.4rem;">
+        <div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;">
             {rf_tag}
-            <div style="width:1px;height:56px;background:#ccc;"></div>
+            <div style="width:1px;height:44px;background:#ccc;flex-shrink:0;"></div>
             {cli_tag}
         </div>
-        {folio_html}
+        <div style="flex-shrink:0;">{folio_html}</div>
     </div>
     <hr class="div">
     """, unsafe_allow_html=True)
