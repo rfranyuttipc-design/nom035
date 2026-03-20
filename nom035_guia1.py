@@ -2130,32 +2130,52 @@ if S.pantalla == "panel":
         if st.button("📊  EXCEL MEJORADO + GRÁFICAS", use_container_width=True,
                      disabled=not _hay_datos):
             if not REPORTES_OK:
-                st.error(f"⚠ No se encontró generar_reporte.py\n"
-                         f"Carpeta buscada: {os.getcwd()}\n"
-                         f"Error: {_REPORTE_ERROR}")
+                st.error(f"⚠ No se encontró generar_reporte.py — Error: {_REPORTE_ERROR}")
             else:
-                with st.spinner("Generando Excel profesional..."):
+                with st.spinner("Generando Excel con formatos y gráficas..."):
                     try:
                         out = generar_excel_mejorado(p_rep, S.cliente_key, S.razon)
-                        if out: st.success(f"✓ Archivo generado:\n`{os.path.abspath(out)}`")
-                        else:   st.warning("Sin datos suficientes para generar el reporte.")
+                        if out:
+                            with open(out, "rb") as f:
+                                _excel_bytes = f.read()
+                            _nombre_excel = os.path.basename(out)
+                            st.success("✓ Excel listo — haz click para descargar:")
+                            st.download_button(
+                                label="⬇️  DESCARGAR EXCEL",
+                                data=_excel_bytes,
+                                file_name=_nombre_excel,
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                use_container_width=True,
+                            )
+                        else:
+                            st.warning("Sin datos suficientes para generar el reporte.")
                     except Exception as e:
                         st.error(f"Error al generar Excel: {e}")
     with col_r2:
         if st.button("📄  INFORME WORD COMPLETO", use_container_width=True,
                      disabled=not _hay_datos):
             if not REPORTES_OK:
-                st.error(f"⚠ No se encontró generar_reporte.py\n"
-                         f"Carpeta buscada: {os.getcwd()}\n"
-                         f"Error: {_REPORTE_ERROR}")
+                st.error(f"⚠ No se encontró generar_reporte.py — Error: {_REPORTE_ERROR}")
             else:
-                with st.spinner("Generando informe Word..."):
+                with st.spinner("Generando informe Word con portada y gráficas..."):
                     try:
                         out = generar_word(p_rep, S.cliente_key, S.razon,
                                            logo_rf=LOGO_RF,
                                            logo_cliente=CLIENTES[S.cliente_key]["logo"])
-                        if out: st.success(f"✓ Archivo generado:\n`{os.path.abspath(out)}`")
-                        else:   st.warning("Sin datos suficientes para generar el reporte.")
+                        if out:
+                            with open(out, "rb") as f:
+                                _word_bytes = f.read()
+                            _nombre_word = os.path.basename(out)
+                            st.success("✓ Word listo — haz click para descargar:")
+                            st.download_button(
+                                label="⬇️  DESCARGAR WORD",
+                                data=_word_bytes,
+                                file_name=_nombre_word,
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                use_container_width=True,
+                            )
+                        else:
+                            st.warning("Sin datos suficientes para generar el reporte.")
                     except Exception as e:
                         st.error(f"Error al generar Word: {e}")
     if not _hay_datos:
