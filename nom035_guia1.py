@@ -21,7 +21,7 @@ CORRECCIONES v2:
 
 import streamlit as st
 import pandas as pd
-import os, re, time, sys
+import os, re, time, sys, sqlite3, threading
 from datetime import datetime
 
 # ── Módulo de reportes (embebido) ──────────────────────────────────────────
@@ -1757,45 +1757,42 @@ def guardar(data):
                 return False
     return False
 
+# Mutex en memoria — garantiza orden en procesos Streamlit multi-hilo
+_folio_lock = threading.Lock()
+
+def _db_path(cliente_key: str) -> str:
+    os.makedirs('data', exist_ok=True)
+    return f"data/folios_{cliente_key.upper()}.db"
+
+def _init_db(db_path: str):
+    with sqlite3.connect(db_path, timeout=30) as con:
+        con.execute('''CREATE TABLE IF NOT EXISTS folios (
+            id    INTEGER PRIMARY KEY AUTOINCREMENT,
+            razon TEXT NOT NULL,
+            ts    TEXT NOT NULL
+        )''')
+        con.commit()
+
 def folio_nuevo(cliente_key: str, razon_social: str) -> str:
-    """Folio consecutivo 001, 002, 003...
-    Usa archivo de bloqueo para evitar que dos usuarios simultáneos
-    obtengan el mismo número.
+    """Folio 001, 002, 003... estrictamente único por orden de llegada.
+    SQLite AUTOINCREMENT + threading.Lock garantizan que nunca
+    dos usuarios obtengan el mismo número aunque entren simultáneamente.
     """
-    path      = excel_path(cliente_key, razon_social)
-    lock_path = path + ".lock"
-    init_excel(path)
-
-    # Intentar obtener el bloqueo (esperar hasta 10 segundos)
-    _intentos = 0
-    while os.path.exists(lock_path) and _intentos < 20:
-        time.sleep(0.5)
-        _intentos += 1
-
-    # Crear bloqueo
-    try:
-        with open(lock_path, "w") as _lf:
-            _lf.write("lock")
-    except Exception:
-        pass
-
-    try:
-        df = pd.read_excel(path)
-        if df.empty or "Razón Social" not in df.columns:
-            n = 1
-        else:
-            filtro = df["Razón Social"].astype(str).str.strip().str.upper() == razon_social.strip().upper()
-            n = int(filtro.sum()) + 1
-        return str(n).zfill(3)
-    except Exception:
-        return "001"
-    finally:
-        # Liberar bloqueo siempre
-        try:
-            if os.path.exists(lock_path):
-                os.remove(lock_path)
-        except Exception:
-            pass
+    db        = _db_path(cliente_key)
+    _init_db(db)
+    razon_key = razon_social.strip().upper()
+    with _folio_lock:
+        with sqlite3.connect(db, timeout=30, check_same_thread=False) as con:
+            cur = con.execute(
+                'INSERT INTO folios (razon, ts) VALUES (?, ?)',
+                (razon_key, datetime.now().isoformat())
+            )
+            con.commit()
+            n = con.execute(
+                'SELECT COUNT(*) FROM folios WHERE razon=? AND id<=?',
+                (razon_key, cur.lastrowid)
+            ).fetchone()[0]
+    return str(n).zfill(3)
 
 def solo_letras(t):
     return re.sub(r"[^A-Za-záéíóúÁÉÍÓÚüÜñÑ\s;]","",t).upper().strip()
