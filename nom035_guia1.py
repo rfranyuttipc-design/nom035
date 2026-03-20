@@ -1758,17 +1758,27 @@ def guardar(data):
     return False
 
 def folio_nuevo(cliente_key: str, razon_social: str) -> str:
-    """Folio consecutivo por razón social dentro del archivo del cliente."""
+    """Folio consecutivo por razón social dentro del archivo del cliente.
+    En entornos cloud donde el archivo puede no persistir,
+    usa timestamp para garantizar unicidad."""
     path = excel_path(cliente_key, razon_social)
     init_excel(path)
     try:
         df = pd.read_excel(path)
         if df.empty or "Razón Social" not in df.columns:
-            return "001"
-        n = len(df[df["Razón Social"] == razon_social]) + 1
-        return str(n).zfill(3)
+            n = 1
+        else:
+            n = len(df[df["Razón Social"] == razon_social]) + 1
+        # Si el archivo existe y tiene datos, usar folio consecutivo normal
+        if n > 1 or (not df.empty):
+            return str(n).zfill(3)
+        # Si el archivo está vacío o es nuevo, usar timestamp para evitar
+        # colisiones en entornos cloud donde el archivo se puede reiniciar
+        from datetime import datetime as _dt
+        return _dt.now().strftime("%H%M%S")
     except Exception:
-        return "001"
+        from datetime import datetime as _dt
+        return _dt.now().strftime("%H%M%S")
 
 def solo_letras(t):
     return re.sub(r"[^A-Za-záéíóúÁÉÍÓÚüÜñÑ\s;]","",t).upper().strip()
@@ -2098,11 +2108,20 @@ if S.pantalla == "panel":
     st.markdown("**4. Acciones**")
     c1,c2,c3,c4 = st.columns(4)
     with c1:
-        if st.button("ABRIR EXCEL"):
-            p = excel_path(S.cliente_key, S.razon)
-            if os.path.exists(p):
-                st.success(f"Archivo: `{os.path.abspath(p)}`")
-            else: st.warning(f"Sin datos aún para {S.cliente_key}.")
+        _p_raw = excel_path(S.cliente_key, S.razon)
+        if os.path.exists(_p_raw):
+            with open(_p_raw, "rb") as _f:
+                st.download_button(
+                    label="⬇️  DESCARGAR DATOS (Excel)",
+                    data=_f.read(),
+                    file_name=os.path.basename(_p_raw),
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                )
+        else:
+            st.button("⬇️  DESCARGAR DATOS (Excel)", disabled=True,
+                      use_container_width=True,
+                      help=f"Sin datos aún para {S.cliente_key}.")
     with c2:
         if st.button("ABRIR WORD"):
             p = excel_path(S.cliente_key, S.razon)
