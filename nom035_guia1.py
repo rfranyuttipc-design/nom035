@@ -2006,11 +2006,12 @@ def header(folio=False):
     """Header HTML con ambos logos alineados al centro, mismo alto visual."""
     rf_src     = _img_b64(LOGO_RF)
     cli_src    = _img_b64(CLIENTES[S.cliente_key]["logo"])
+    # Folio solo visible en modo operativo, nunca al empleado
     folio_html = (
         f'<div class="folio-box" style="margin-left:auto;text-align:right;">'
         f'NO. DE CUESTIONARIO<br>'
         f'<span class="folio-num">{S.folio}</span></div>'
-    ) if folio else ""
+    ) if (folio and not _MODO_EMPLEADO) else ""
 
     rf_tag  = (f'<img src="{rf_src}"  alt="RFRANYUTTI" ' +
                'style="height:52px;max-width:120px;width:auto;object-fit:contain;">') if rf_src else "<b>RFRANYUTTI</b>"
